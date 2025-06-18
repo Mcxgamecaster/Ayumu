@@ -1,0 +1,115 @@
+2025-06-18 13:18:03,148 [WARNING ] PyNaCl is not installed, voice will NOT be supported
+2025-06-18 13:18:03,152 [INFO    ] logging in using static token
+2025-06-18 13:18:05,632 [INFO    ] Shard ID None has connected to Gateway (Session ID: 89f45f1dd948b5f5e38ee5708c7b9330).
+2025-06-18 13:18:13,003 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:18:16,847 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:18:43,689 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:18:43,690 [ERROR   ] Error in generate_response for channel 1384504114976653433: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 157, in generate_response
+    model = genai.GenerativeModel(**model_kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+2025-06-18 13:18:44,131 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:21:08,667 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:21:08,667 [ERROR   ] Error in generate_response for channel 1384504114976653433: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 157, in generate_response
+    model = genai.GenerativeModel(**model_kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+2025-06-18 13:21:09,148 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:22:36,602 [INFO    ] [1118738640294649896] Locked channel to generate response...
+2025-06-18 13:22:43,061 [ERROR   ] Ignoring exception in on_message
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 251, in on_message
+    await message.reply(chunk, mention_author=False)
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\message.py", line 1869, in reply
+    return await self.channel.send(content, reference=self, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\abc.py", line 1644, in send
+    data = await state.http.send_message(channel.id, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\http.py", line 756, in request
+    raise Forbidden(response, data)
+discord.errors.Forbidden: 403 Forbidden (error code: 160002): Cannot reply without permission to read message history
+2025-06-18 13:25:56,016 [WARNING ] PyNaCl is not installed, voice will NOT be supported
+2025-06-18 13:25:56,019 [INFO    ] logging in using static token
+2025-06-18 13:25:58,364 [INFO    ] Shard ID None has connected to Gateway (Session ID: de9ff1c6df7e5ca836d07798d30f0413).
+2025-06-18 13:26:15,606 [INFO    ] [1118738640294649896] Locked channel to generate response...
+2025-06-18 13:26:15,614 [INFO    ] [1118738640294649896] Locked channel to generate response...
+2025-06-18 13:26:22,059 [ERROR   ] Ignoring exception in on_message
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 251, in on_message
+    await message.reply(chunk, mention_author=False)
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\message.py", line 1869, in reply
+    return await self.channel.send(content, reference=self, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\abc.py", line 1644, in send
+    data = await state.http.send_message(channel.id, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\http.py", line 756, in request
+    raise Forbidden(response, data)
+discord.errors.Forbidden: 403 Forbidden (error code: 160002): Cannot reply without permission to read message history
+2025-06-18 13:26:23,913 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:26:23,913 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:26:23,914 [ERROR   ] Error in generate_response for channel 1384504114976653433: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 157, in generate_response
+    model = genai.GenerativeModel(**model_kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+2025-06-18 13:26:24,510 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:26:24,914 [ERROR   ] Ignoring exception in on_message
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 251, in on_message
+    await message.reply(chunk, mention_author=False)
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\message.py", line 1869, in reply
+    return await self.channel.send(content, reference=self, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\abc.py", line 1644, in send
+    data = await state.http.send_message(channel.id, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\WINDOWS\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\discord\http.py", line 756, in request
+    raise Forbidden(response, data)
+discord.errors.Forbidden: 403 Forbidden (error code: 160002): Cannot reply without permission to read message history
+2025-06-18 13:26:26,107 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:26:49,803 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:26:49,863 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:26:49,864 [ERROR   ] Error in generate_response for channel 1384504114976653433: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 157, in generate_response
+    model = genai.GenerativeModel(**model_kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+2025-06-18 13:26:50,426 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:26:55,547 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:26:55,571 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:26:55,571 [ERROR   ] Error in generate_response for channel 1384504114976653433: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+Traceback (most recent call last):
+  File "C:\Users\WINDOWS\Desktop\ayumu-discord-bot\main.py", line 157, in generate_response
+    model = genai.GenerativeModel(**model_kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: GenerativeModel.__init__() got an unexpected keyword argument 'thinking_config'
+2025-06-18 13:26:56,022 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:32:01,514 [WARNING ] PyNaCl is not installed, voice will NOT be supported
+2025-06-18 13:32:01,516 [INFO    ] logging in using static token
+2025-06-18 13:32:04,170 [INFO    ] Shard ID None has connected to Gateway (Session ID: b639d405f5626fd93b66aa2ce4da622f).
+2025-06-18 13:32:19,091 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:32:21,661 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:35:05,776 [WARNING ] PyNaCl is not installed, voice will NOT be supported
+2025-06-18 13:35:05,778 [INFO    ] logging in using static token
+2025-06-18 13:35:08,125 [INFO    ] Shard ID None has connected to Gateway (Session ID: 578b86293610aa2a64249add5f4d19f5).
+2025-06-18 13:36:13,908 [WARNING ] PyNaCl is not installed, voice will NOT be supported
+2025-06-18 13:36:13,908 [INFO    ] logging in using static token
+2025-06-18 13:36:16,280 [INFO    ] Shard ID None has connected to Gateway (Session ID: cc4623cdaa3cb406a873415f3547a6be).
+2025-06-18 13:36:25,248 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:36:28,373 [INFO    ] [510041699519561730] Unlocked channel.
+2025-06-18 13:36:36,138 [INFO    ] [510041699519561730] Locked channel to generate response...
+2025-06-18 13:36:39,813 [INFO    ] [510041699519561730] Unlocked channel.
