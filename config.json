@@ -1,0 +1,12 @@
+{
+    "discord_token": "YOUR_DISCORD_TOKEN_PLACEHOLDER",
+    "google_api_key": "YOUR_GOOGLE_API_KEY_PLACEHOLDER",
+    "default_context_size": 100000,
+    "default_max_output_tokens": 65536,
+    "default_message_limit": 35,
+    "default_model": "gemini-2.5-pro",
+    "default_include_thoughts": false,
+    "default_thinking_budget": 0,
+    "default_process_images": true,
+    "default_process_videos": true
+}

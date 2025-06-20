@@ -1,9 +1,9 @@
-# main.py
+import os
 import discord
 from discord.ext import commands
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
-import os
 import asyncio
 from collections import deque
 import io
@@ -11,38 +11,42 @@ from datetime import datetime, timezone
 import aiohttp
 import tempfile
 import mimetypes
+import base64
+import re
 
 
 # --- Load Settings ---
+config = {}
 try:
     with open('config.json', 'r', encoding='utf-8') as f:
         config = json.load(f)
 except FileNotFoundError:
-    print("config.json not found! Please create it with necessary values.")
-    exit()
+    print("config.json not found! Using environment variables and defaults for some settings.")
+    # If config.json is optional or primarily for non-secret settings, handle its absence.
 
 # --- Essential Variables ---
-DISCORD_TOKEN = config.get('discord_token')
-GOOGLE_API_KEY = config.get('google_api_key')
+# Try to get from environment variables first, then fallback to config.json (for non-secret local testing if needed)
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN') # Only read from env var for secret
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY') # Only read from env var for secret
 
-# --- Default Settings ---
+# --- Default Settings (can still be loaded from config.json) ---
 DEFAULT_CONTEXT_SIZE = config.get('default_context_size', 100000)
 DEFAULT_MAX_OUTPUT_TOKENS = config.get('default_max_output_tokens', 65536)
 DEFAULT_MESSAGE_LIMIT = config.get('default_message_limit', 35)
-DEFAULT_MODEL = config.get('default_model', 'gemini-2.5-flash') # User-defined default
+DEFAULT_MODEL = config.get('default_model', 'gemini-2.5-pro')
 DEFAULT_INCLUDE_THOUGHTS = config.get('default_include_thoughts', False)
 DEFAULT_THINKING_BUDGET = config.get('default_thinking_budget', 0)
-# <<< [เพิ่มใหม่] --- ค่าเริ่มต้นสำหรับ toggle --- >>>
-DEFAULT_PROCESS_IMAGES = True
-DEFAULT_PROCESS_VIDEOS = True
-
+DEFAULT_PROCESS_IMAGES = config.get('default_process_images', True)
+DEFAULT_PROCESS_VIDEOS = config.get('default_process_videos', True)
 
 # --- Prerequisite Checks ---
-if not DISCORD_TOKEN or not GOOGLE_API_KEY:
-    print("Discord Token or Google API Key is missing in config.json")
+if not DISCORD_TOKEN:
+    print("Discord Token is missing! Please set the DISCORD_TOKEN environment variable.")
+    exit()
+if not GOOGLE_API_KEY:
+    print("Google API Key is missing! Please set the GOOGLE_API_KEY environment variable.")
     exit()
 
-# --- Load System Prompt & Personality ---
 try:
     with open('system_prompt.txt', 'r', encoding='utf-8') as f:
         system_instructions = f.read()
@@ -55,15 +59,8 @@ try:
 except FileNotFoundError:
     personality_profile = ""
 
-# --- Configure Google AI ---
-genai.configure(api_key=GOOGLE_API_KEY)
-
-safety_settings = [
-    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-]
+# --- Configure Google AI Client ---
+genai_client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # --- Configure Discord Bot ---
 intents = discord.Intents.default()
@@ -87,17 +84,17 @@ MULTIMODAL_MODELS = [
     "gemini-2.5-flash-lite-preview-06-17"
 ]
 
-# <<< --- [เพิ่มใหม่] --- >>>
-# คลาสสำหรับสร้างหน้าต่าง (Modal) เพื่อแก้ไข Personality
-# <<< --- [อัปเกรดและแก้ไข] คลาส Modal สำหรับแก้ไข Prompt และ Personality --- >>>
-# <<< --- [แก้ไข Label] คลาส Modal ที่ถูกต้อง --- >>>
+# YouTube URL regex pattern
+YOUTUBE_URL_PATTERN = re.compile(
+    r'(?:https?://)?(?:www\.)?(?:youtube\.com/(?:watch\?v=|embed/|v/)|youtu\.be/)([a-zA-Z0-9_-]+)'
+)
 
+# Modal class for editing prompts and personality
 class EditPromptsModal(discord.ui.Modal):
     def __init__(self):
         super().__init__(title="แก้ไข Prompt และ Personality", timeout=None)
 
         self.system_prompt_input = discord.ui.TextInput(
-            # <<< [แก้ไข] แก้ไข Label ให้สั้นกว่า 45 ตัวอักษร
             label="System Prompt (สำหรับผู้ใช้ขั้นสูง)",
             style=discord.TextStyle.paragraph,
             placeholder="เว้นว่างเพื่อใช้ค่าเริ่มต้นจากไฟล์",
@@ -106,7 +103,7 @@ class EditPromptsModal(discord.ui.Modal):
         )
 
         self.personality_input = discord.ui.TextInput(
-            label="Personality Profile", # อันนี้สั้นอยู่แล้ว ไม่มีปัญหา
+            label="Personality Profile",
             style=discord.TextStyle.paragraph,
             placeholder="เว้นว่างเพื่อใช้ค่าเริ่มต้นจากไฟล์",
             required=False,
@@ -116,7 +113,6 @@ class EditPromptsModal(discord.ui.Modal):
         self.add_item(self.system_prompt_input)
         self.add_item(self.personality_input)
 
-    # on_submit เหมือนเดิม ไม่ต้องแก้
     async def on_submit(self, interaction: discord.Interaction):
         storage_key = interaction.user.id if interaction.guild is None else interaction.guild.id
         
@@ -146,29 +142,61 @@ class EditPromptsModal(discord.ui.Modal):
 
         await interaction.response.send_message(final_response, ephemeral=True)
 
-# <<< --- จบส่วนคลาส Modal --- >>>
 
-# <<< --- [MODIFIED BLOCK START] --- >>>
+def _extract_youtube_urls(text: str) -> list:
+    """Extract YouTube URLs from text"""
+    if not text:
+        return []
+    
+    matches = YOUTUBE_URL_PATTERN.findall(text)
+    youtube_urls = []
+    
+    for match in matches:
+        # Reconstruct the full YouTube URL
+        youtube_url = f"https://www.youtube.com/watch?v={match}"
+        youtube_urls.append(youtube_url)
+    
+    return youtube_urls
+
+
 async def _process_attachments(message: discord.Message, settings: dict) -> list:
     """
     Processes attachments in a message, downloading them and preparing them
-    for the Gemini API. Checks settings to decide whether to process.
+    for the Gemini API using the new genai client. Checks settings to decide whether to process.
+    Also processes YouTube URLs from message content.
 
-    Returns a list of parts (image data as dicts or uploaded file objects).
+    Returns a list of parts (image data as types.Part objects).
     """
-    if not message.attachments:
-        return []
-
     selected_model = settings.get("model", DEFAULT_MODEL)
     if not any(model_name in selected_model for model_name in MULTIMODAL_MODELS):
-        print(f"Skipping attachment processing: Model '{selected_model}' is not multimodal.")
+        print(f"Skipping video processing: Model '{selected_model}' doesn't support video.")
         return []
 
     processed_parts = []
     
-    # ดึงค่า settings การประมวลผลไฟล์ (ถ้าไม่มีให้เป็น True คือเปิดโดยปริยาย)
+    # Get file processing settings (default to True if not set)
     process_images_enabled = settings.get("process_images", True)
     process_videos_enabled = settings.get("process_videos", True)
+
+    # Process YouTube URLs from message content
+    if process_videos_enabled and message.content:
+        youtube_urls = _extract_youtube_urls(message.content)
+        for youtube_url in youtube_urls:
+            print(f"Found YouTube URL: {youtube_url}")
+            try:
+                # Create FileData part for YouTube URL
+                youtube_part = types.Part.from_uri(
+                    file_uri=youtube_url,
+                    mime_type="video/mp4"  # YouTube videos are typically MP4
+                )
+                processed_parts.append(youtube_part)
+                print(f"   + Successfully added YouTube video: {youtube_url}")
+            except Exception as e:
+                print(f"   - Error processing YouTube URL {youtube_url}: {e}")
+
+    # Process Discord attachments
+    if not message.attachments:
+        return processed_parts
 
     async with aiohttp.ClientSession() as session:
         for attachment in message.attachments:
@@ -178,19 +206,19 @@ async def _process_attachments(message: discord.Message, settings: dict) -> list
             if attachment.content_type and attachment.content_type.startswith("image/"):
                 if not process_images_enabled:
                     print(f"-> Skipping image '{attachment.filename}' because processing is disabled.")
-                    continue  # ข้ามไปไฟล์ถัดไป
+                    continue
 
                 print(f"-> Processing image '{attachment.filename}'...")
                 try:
                     async with session.get(attachment.url) as resp:
                         if resp.status == 200:
                             image_bytes = await resp.read()
-                            processed_parts.append({
-                                "inline_data": {
-                                    "mime_type": attachment.content_type,
-                                    "data": image_bytes
-                                }
-                            })
+                            # Create the image part correctly
+                            image_part = types.Part.from_bytes(
+                                data=image_bytes,
+                                mime_type=attachment.content_type
+                            )
+                            processed_parts.append(image_part)
                             print(f"   + Successfully processed image: {attachment.filename}")
                         else:
                             print(f"   - Failed to download image {attachment.filename}: HTTP {resp.status}")
@@ -201,42 +229,52 @@ async def _process_attachments(message: discord.Message, settings: dict) -> list
             elif attachment.content_type and attachment.content_type.startswith("video/"):
                 if not process_videos_enabled:
                     print(f"-> Skipping video '{attachment.filename}' because processing is disabled.")
-                    continue  # ข้ามไปไฟล์ถัดไป
+                    continue
 
-                print(f"-> Processing video '{attachment.filename}'...")
+                print(f"-> Processing video '{attachment.filename}' via File API...")
                 temp_file_path = None
                 try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{attachment.filename}") as temp_file:
-                        temp_file_path = temp_file.name
-                        async with session.get(attachment.url) as resp:
-                            if resp.status == 200:
-                                temp_file.write(await resp.read())
-                                print(f"   + Downloaded video '{attachment.filename}' to temporary file.")
-                            else:
-                                print(f"   - Failed to download video {attachment.filename}: HTTP {resp.status}")
-                                continue
 
-                    print(f"   + Uploading '{attachment.filename}' to Google File API...")
-                    loop = asyncio.get_running_loop()
-                    google_file = await loop.run_in_executor(
-                        None,
-                        lambda: genai.upload_file(path=temp_file_path, display_name=attachment.filename)
-                    )
+                        # Use File API for larger files
+                        print(f"   + Using File API for large video '{attachment.filename}'...")
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{attachment.filename}") as temp_file:
+                            temp_file_path = temp_file.name
+                            async with session.get(attachment.url) as resp:
+                                if resp.status == 200:
+                                    temp_file.write(await resp.read())
+                                    print(f"   + Downloaded video '{attachment.filename}' to temporary file.")
+                                else:
+                                    print(f"   - Failed to download video {attachment.filename}: HTTP {resp.status}")
+                                    continue
 
-                    while google_file.state.name == "PROCESSING":
-                        print(f"   ... Waiting for '{attachment.filename}' to be processed...")
-                        await asyncio.sleep(10)
+                        print(f"   + Uploading '{attachment.filename}' to Google File API...")
+                        loop = asyncio.get_running_loop()
+                        
+                        # Upload file using new genai client - FIXED: Use 'file' parameter instead of 'path'
                         google_file = await loop.run_in_executor(
                             None,
-                            lambda: genai.get_file(name=google_file.name)
+                            lambda: genai_client.files.upload(file=temp_file_path)
                         )
 
-                    if google_file.state.name == "ACTIVE":
-                        processed_parts.append({"file_data": {"mime_type": google_file.mime_type, "file_uri": google_file.uri}})
-                        print(f"   + Successfully uploaded and processed video: {attachment.filename}")
-                    else:
-                        print(f"   - Google File API failed to process video '{attachment.filename}'. State: {google_file.state.name}")
-                        await message.channel.send(f"Sorry, I couldn't process the video '{attachment.filename}'. Please try again.")
+                        # Wait for processing
+                        while google_file.state == "PROCESSING":
+                            print(f"   ... Waiting for '{attachment.filename}' to be processed...")
+                            await asyncio.sleep(10)
+                            google_file = await loop.run_in_executor(
+                                None,
+                                lambda: genai_client.files.get(name=google_file.name)
+                            )
+
+                        if google_file.state == "ACTIVE":
+                            video_part = types.Part.from_uri(
+                                file_uri=google_file.uri,
+                                mime_type=google_file.mime_type
+                            )
+                            processed_parts.append(video_part)
+                            print(f"   + Successfully uploaded and processed video: {attachment.filename}")
+                        else:
+                            print(f"   - Google File API failed to process video '{attachment.filename}'. State: {google_file.state}")
+                            await message.channel.send(f"Sorry, I couldn't process the video '{attachment.filename}'. Please try again.")
 
                 except Exception as e:
                     print(f"   - An error occurred while processing video {attachment.filename}: {e}")
@@ -246,13 +284,61 @@ async def _process_attachments(message: discord.Message, settings: dict) -> list
                         print(f"   + Removed temporary file: {temp_file_path}")
 
     return processed_parts
-# <<< --- [MODIFIED BLOCK END] --- >>>
+
+# Updated function to properly handle parts conversion for history storage
+def _convert_parts_to_dict(parts):
+    """Convert types.Part objects to dictionary format for storage"""
+    parts_dict = []
+    for part in parts:
+        if hasattr(part, 'text') and part.text:
+            parts_dict.append({"text": part.text})
+        elif hasattr(part, 'inline_data') and part.inline_data:
+            # For inline data, we need to store the base64 encoded data
+            import base64
+            encoded_data = base64.b64encode(part.inline_data.data).decode('utf-8')
+            parts_dict.append({
+                "inline_data": {
+                    "mime_type": part.inline_data.mime_type,
+                    "data": encoded_data
+                }
+            })
+        elif hasattr(part, 'file_data') and part.file_data:
+            parts_dict.append({
+                "file_data": {
+                    "mime_type": part.file_data.mime_type,
+                    "file_uri": part.file_data.file_uri
+                }
+            })
+    return parts_dict
+
+# Updated function to convert dictionary format back to types.Part objects
+def _convert_dict_to_parts(parts_dict):
+    """Convert dictionary format back to types.Part objects"""
+    parts = []
+    for part_dict in parts_dict:
+        if "text" in part_dict:
+            parts.append(types.Part.from_text(text=part_dict["text"]))
+        elif "inline_data" in part_dict:
+            import base64
+            # Decode the base64 data back to bytes
+            data_bytes = base64.b64decode(part_dict["inline_data"]["data"])
+            parts.append(types.Part.from_bytes(
+                data=data_bytes,
+                mime_type=part_dict["inline_data"]["mime_type"]
+            ))
+        elif "file_data" in part_dict:
+            parts.append(types.Part.from_uri(
+                file_uri=part_dict["file_data"]["file_uri"],
+                mime_type=part_dict["file_data"]["mime_type"]
+            ))
+    return parts
+
+# Updated _prepare_request_payload function
 def _prepare_request_payload(storage_key, channel_id):
     """
-    เตรียมข้อมูลทั้งหมดที่จะส่งไปยัง Google AI API
-    ฟังก์ชันนี้จะไม่ทำการเรียก API จริง
+    Prepares all data to be sent to Google AI API using the new genai client format.
+    This function doesn't make the actual API call.
     """
-    # ย้าย default_settings_dict กลับมาไว้ข้างในนี้
     default_settings_dict = {
         "context_size": DEFAULT_CONTEXT_SIZE,
         "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
@@ -269,62 +355,119 @@ def _prepare_request_payload(storage_key, channel_id):
     history = chat_history.setdefault(storage_key, {}).setdefault(channel_id, deque(maxlen=settings["context_size"]))
     limited_history = list(history)[-settings["message_limit"]:]
 
-    # --- Dynamic System Prompt Generation (ที่อัปเดตแล้ว) ---
+    # --- Dynamic System Prompt Generation ---
     active_system_prompt = user_specific_settings.get("custom_system_prompt", system_instructions)
     active_personality = user_specific_settings.get("custom_personality", personality_profile)
     
-    # รวม prompt โดยตรวจสอบว่า personality ว่างหรือไม่
+    # Combine prompts, checking if personality is empty
     if active_personality and active_personality.strip():
         final_system_prompt = f"{active_system_prompt}\n\n{active_personality}"
     else:
         final_system_prompt = active_system_prompt
 
-    contents = [{"role": "user", "parts": [{"text": final_system_prompt}]}]
-    contents.append({"role": "model", "parts": [{"text": "รับทราบค่าาา! อายูมุพร้อมคุยกับทุกคนแล้วค่ะ! (｡•̀ᴗ-)✧"}]})
-    contents.extend(limited_history)
+    # Create contents using new genai types
+    contents = [
+        types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=final_system_prompt)]
+        ),
+        types.Content(
+            role="model",
+            parts=[types.Part.from_text(text="รับทราบค่าาา! อายูมุพร้อมคุยกับทุกคนแล้วค่ะ! (｡•̀ᴗ-)✧")]
+        )
+    ]
     
-    model_kwargs = {
-        'model_name': settings["model"],
-        'generation_config': {
-            "temperature": 1.0,
-            "top_p": 1.0,
-            "max_output_tokens": settings["max_output_tokens"]
-        },
-        'safety_settings': safety_settings,
-    }
+    # Convert history to new format using helper function
+    for msg in limited_history:
+        role = msg["role"]
+        parts = _convert_dict_to_parts(msg["parts"])
+        contents.append(types.Content(role=role, parts=parts))
+    
+    # Create safety settings
+    safety_settings = [
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold=types.HarmBlockThreshold.BLOCK_NONE
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold=types.HarmBlockThreshold.BLOCK_NONE
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold=types.HarmBlockThreshold.BLOCK_NONE
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold=types.HarmBlockThreshold.BLOCK_NONE
+        ),
+    ]
+    
+    # Create generation config with safety settings included
+    generation_config = types.GenerateContentConfig(
+        temperature=1.0,
+        top_p=1.0,
+        max_output_tokens=settings["max_output_tokens"],
+        response_mime_type="text/plain",
+        safety_settings=safety_settings
+    )
 
+    # Add thinking config if enabled
     if settings["include_thoughts"] and settings["thinking_budget"] > 0:
-        model_kwargs['tool_config'] = {'function_calling_config': {'mode': 'ANY'}}
-        model_kwargs['thinking_config'] = {
-            'include_thoughts': True,
-            'thinking_budget': settings['thinking_budget'],
-            'stop_on_thought': False
-        }
+        generation_config.thinking_config = types.ThinkingConfig(
+            thinking_budget=settings['thinking_budget']
+        )
     
-    return contents, model_kwargs
+    return contents, generation_config, settings["model"]
 
 async def generate_response(storage_key, channel_id):
     history = chat_history.setdefault(storage_key, {}).setdefault(channel_id, deque(maxlen=DEFAULT_CONTEXT_SIZE))
-    contents, model_kwargs = _prepare_request_payload(storage_key, channel_id)
+    contents, generation_config, model_name = _prepare_request_payload(storage_key, channel_id)
+    
     try:
-        model = genai.GenerativeModel(**model_kwargs)
-        response = await model.generate_content_async(contents)
+        # Use the new genai client to generate content
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: genai_client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=generation_config
+                # safety_settings removed from here - now in config
+            )
+        )
+        
         last_responses.setdefault(storage_key, {})[channel_id] = response
+        
         thought_text, reply_text = "", ""
-        if response.candidates:
+        
+        if response.candidates and len(response.candidates) > 0 and response.candidates[0].content:
             for part in response.candidates[0].content.parts:
-                if hasattr(part, 'thought') and getattr(part, 'thought', False): thought_text += part.text
-                else: reply_text += part.text
+                if hasattr(part, 'thought') and getattr(part, 'thought', False):
+                    thought_text += part.text
+                else:
+                    reply_text += part.text
+        
         if not reply_text.strip():
-            if response.prompt_feedback and response.prompt_feedback.block_reason: reply_text = f"อายูมุไม่สามารถตอบได้ค่ะ เนื่องจาก: {response.prompt_feedback.block_reason.name}"
-            else: reply_text = "อายูมุคิดคำตอบไม่ออกเลยตอนนี้ >.<"
-        history.append({"role": "model", "parts": [{"text": reply_text}]})
+            if hasattr(response, 'prompt_feedback') and response.prompt_feedback and hasattr(response.prompt_feedback, 'block_reason'):
+                reply_text = f"อายูมุไม่สามารถตอบได้ค่ะ เนื่องจาก: {response.prompt_feedback.block_reason}"
+            else:
+                reply_text = "อายูมุคิดคำตอบไม่ออกเลยตอนนี้ >.<"
+        
+        # Add to history using new format
+        history.append({
+            "role": "model", 
+            "parts": [{"text": reply_text}]
+        })
+        
         return {"thought": thought_text, "reply": reply_text}
+        
     except Exception as e:
         print(f"Error calling Google AI API: {e}")
-        if storage_key in last_responses and channel_id in last_responses[storage_key]: del last_responses[storage_key][channel_id]
+        if storage_key in last_responses and channel_id in last_responses[storage_key]:
+            del last_responses[storage_key][channel_id]
         return {"thought": "", "reply": f"ขออภัยค่ะ เกิดข้อผิดพลาดบางอย่าง ({e})"}
-
+    
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
@@ -337,34 +480,37 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    if message.author == bot.user: return
+    if message.author == bot.user:
+        return
+    
     is_dm = isinstance(message.channel, discord.DMChannel)
     storage_key = message.author.id if is_dm else message.guild.id
     channel_id = message.channel.id
     was_pinged = bot.user in message.mentions
     is_reply_to_bot = (message.reference and message.reference.cached_message and message.reference.cached_message.author == bot.user)
     is_priority_override = was_pinged or is_reply_to_bot
+    
     lock = channel_locks.setdefault(channel_id, asyncio.Lock())
     if lock.locked() and not is_priority_override:
         print(f"[{channel_id}] Dropping message (not priority)...")
         return
+    
     is_enabled_channel = False
     if not is_dm:
-        if channel_settings.get(storage_key, {}).get(channel_id, {}).get("enabled"): is_enabled_channel = True
+        is_enabled_channel = channel_settings.get(storage_key, {}).get(channel_id, {}).get("enabled", False)
 
     if is_dm or is_enabled_channel:
-        # <<< --- [MODIFIED BLOCK START] --- >>>
         user_specific_settings = server_settings.get(storage_key, {})
         current_settings = {
             "model": user_specific_settings.get("model", DEFAULT_MODEL),
             "process_images": user_specific_settings.get("process_images", DEFAULT_PROCESS_IMAGES),
             "process_videos": user_specific_settings.get("process_videos", DEFAULT_PROCESS_VIDEOS)
         }
-        # <<< --- [MODIFIED BLOCK END] --- >>>
 
         user_parts = []
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         attachment_parts = await _process_attachments(message, current_settings)
+        
         text_content = ""
         if message.reference and message.reference.message_id:
             try:
@@ -375,47 +521,63 @@ async def on_message(message):
                     content_lines = [line for line in lines if not line.strip().startswith('>')]
                     orig_content = '\n'.join(content_lines).strip()
                 text_content = f'[{now_utc}] User "{message.author.display_name}" (ID: {message.author.id}): [ตอบกลับถึง "{orig_author}": "{orig_content}"] >> {message.content}'
-            except discord.NotFound: text_content = f'[{now_utc}] User "{message.author.display_name}" (ID: {message.author.id}): [ตอบกลับข้อความที่ถูกลบไปแล้ว] >> {message.content}'
+            except discord.NotFound:
+                text_content = f'[{now_utc}] User "{message.author.display_name}" (ID: {message.author.id}): [ตอบกลับข้อความที่ถูกลบไปแล้ว] >> {message.content}'
             except Exception as e:
                 print(f"Error fetching referenced message: {e}")
                 text_content = f'[{now_utc}] User "{message.author.display_name}" (ID: {message.author.id}): {message.content}'
         else:
             text_content = f'[{now_utc}] User "{message.author.display_name}" (ID: {message.author.id}): {message.content}'
-        if text_content.strip(): user_parts.append({"text": text_content})
+        
+        if text_content.strip():
+            user_parts.append(types.Part.from_text(text=text_content))
+        
         user_parts.extend(attachment_parts)
+        
         if user_parts:
             history = chat_history.setdefault(storage_key, {}).setdefault(channel_id, deque(maxlen=DEFAULT_CONTEXT_SIZE))
-            history.append({"role": "user", "parts": user_parts})
+            # Convert parts to dict format for storage
+            parts_dict = _convert_parts_to_dict(user_parts)    
+            history.append({"role": "user", "parts": parts_dict})
 
     should_reply = False
-    if is_dm: should_reply = True
+    if is_dm:
+        should_reply = True
     elif is_enabled_channel:
         channel_conf = channel_settings.get(storage_key, {}).get(channel_id, {})
         is_autoreply_on = channel_conf.get("autoreply", False)
-        if is_autoreply_on or is_priority_override or message.attachments: should_reply = True
+        # Check for YouTube URLs in the message content
+        has_youtube_url = bool(_extract_youtube_urls(message.content)) if message.content else False
+        if is_autoreply_on or is_priority_override or message.attachments or has_youtube_url:
+            should_reply = True
 
     if should_reply:
         history_for_channel = chat_history.get(storage_key, {}).get(channel_id, [])
-        if not history_for_channel: return
+        if not history_for_channel:
+            return
+        
         async with lock:
             print(f"[{channel_id}] Locked channel to generate response...")
             async with message.channel.typing():
                 response_data = await generate_response(storage_key, channel_id)
                 if response_data and response_data.get("reply"):
-                    final_message, thought_text, reply_text = "", response_data.get("thought", "").strip(), response_data.get("reply", "")
+                    final_message = ""
+                    thought_text = response_data.get("thought", "").strip()
+                    reply_text = response_data.get("reply", "")
+                    
                     if thought_text:
                         formatted_thought = "\n".join([f"> {line}" for line in thought_text.split('\n')])
                         final_message += f"{formatted_thought}\n"
+                    
                     final_message += reply_text
                     await message.reply(final_message, mention_author=False)
             print(f"[{channel_id}] Sent response and unlocked channel.")
+    
     await bot.process_commands(message)
 
-# --- Slash Commands ---
+# --- Utility function for slash commands ---
 def get_storage_key(interaction: discord.Interaction) -> int:
     return interaction.user.id if interaction.guild is None else interaction.guild.id
-
-
 
 # (Commands from enablellm to deletemessage remain unchanged)
 @bot.tree.command(name="enablellm", description="เปิดใช้งาน AI ในช่องนี้ (ใช้ในเซิร์ฟเวอร์เท่านั้น)")
@@ -722,38 +884,6 @@ async def previewnextrequest(interaction: discord.Interaction):
     except Exception as e:
         print(f"Error during previewnextrequest: {e}")
         await interaction.followup.send(f"เกิดข้อผิดพลาดขณะพรีวิวข้อมูล: {e}", ephemeral=True)
-
-# <<< --- [เพิ่มใหม่] คำสั่งเปิด/ปิดการประมวลผลไฟล์ --- >>>
-
-@bot.tree.command(name="toggleinlineimage", description="เปิด/ปิด การส่งรูปภาพให้ AI ประมวลผล")
-@discord.app_commands.choices(status=[
-    discord.app_commands.Choice(name="เปิด (On)", value="on"),
-    discord.app_commands.Choice(name="ปิด (Off)", value="off"),
-])
-async def toggleinlineimage(interaction: discord.Interaction, status: discord.app_commands.Choice[str]):
-    storage_key = get_storage_key(interaction)
-    is_on = status.value == "on"
-    server_settings.setdefault(storage_key, {})["process_images"] = is_on
-    await interaction.response.send_message(
-        f"✅ การประมวลผลรูปภาพในแชทนี้ถูก **{'เปิด' if is_on else 'ปิด'}** แล้วค่ะ",
-        ephemeral=True
-    )
-
-@bot.tree.command(name="toggleinlinevideo", description="เปิด/ปิด การส่งวิดีโอให้ AI ประมวลผล (ค่อนข้างนานนะคะ! ใช้อย่างระมัดระวัง)")
-@discord.app_commands.choices(status=[
-    discord.app_commands.Choice(name="เปิด (On)", value="on"),
-    discord.app_commands.Choice(name="ปิด (Off)", value="off"),
-])
-async def toggleinlinevideo(interaction: discord.Interaction, status: discord.app_commands.Choice[str]):
-    storage_key = get_storage_key(interaction)
-    is_on = status.value == "on"
-    server_settings.setdefault(storage_key, {})["process_videos"] = is_on
-    await interaction.response.send_message(
-        f"✅ การประมวลผลวิดีโอในแชทนี้ถูก **{'เปิด' if is_on else 'ปิด'}** แล้วค่ะ",
-        ephemeral=True
-    )
-
-# <<< --- จบส่วนคำสั่งเปิด/ปิด --- >>>
 
 settings_group = discord.app_commands.Group(name="settings", description="ตั้งค่าการทำงานของบอท")
 @settings_group.command(name="contextsize", description="ตั้งค่าขนาดประวัติการสนทนา (1-200000)")
